@@ -1,0 +1,141 @@
+#include <SoftwareSerial.h>
+SoftwareSerial gprsSerial1(1, 0);
+SoftwareSerial gpsSerial1(4,5);  // Replace RX_PIN and TX_PIN with the actual GPIO pin numbers you connected to on the Pico W
+
+#include <String.h>
+#include <DHT.h>
+#include <TinyGPS++.h>
+
+#define DHTPIN 28
+
+DHT dht(DHTPIN, DHT11);
+TinyGPSPlus gps;
+
+void setup()
+{
+  gprsSerial1.begin(9600);   // GPRS baud rate
+  gpsSerial1.begin(9600);     // GPS baud rate
+  Serial.begin(9600);       // Serial monitor baud rate
+  dht.begin();
+
+  delay(500);
+}
+
+void loop()
+{
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  delay(100);
+
+  Serial.print("Temperature = ");
+  Serial.print(t);
+  Serial.println(" °C");
+  Serial.print("Humidity = ");
+  Serial.print(h);
+  Serial.println(" %");
+
+  if (gpsSerial1.available())
+  {
+    Serial.print("Serial OK");
+  }
+
+      if (gps.location.isValid())
+      {
+        Serial.print("Latitude: ");
+        Serial.println(gps.location.lat(), 6);
+        Serial.print("Longitude: ");
+        Serial.println(gps.location.lng(), 6);
+      }
+      else
+      {
+        Serial.println("GPS data not available.");
+      }
+  if (gprsSerial1.available())
+    Serial.write(gprsSerial1.read());
+
+  gprsSerial1.println("AT");
+  delay(500);
+
+  gprsSerial1.println("AT+CPIN?");
+  delay(500);
+
+  gprsSerial1.println("AT+CREG?");
+  delay(500);
+
+  gprsSerial1.println("AT+CGATT?");
+  delay(500);
+
+  gprsSerial1.println("AT+CIPSHUT");
+  delay(500);
+
+  gprsSerial1.println("AT+CIPSTATUS");
+  delay(1000);
+
+  gprsSerial1.println("AT+CIPMUX=0");
+  delay(1000);
+
+  ShowSerialData();
+
+  gprsSerial1.println("AT+CSTT=\"wap/mobilinkworld.com\""); // start task and setting the APN
+  delay(500);
+
+  ShowSerialData();
+
+  gprsSerial1.println("AT+CIICR"); // bring up wireless connection
+  delay(1500);
+
+  ShowSerialData();
+
+  gprsSerial1.println("AT+CIFSR"); // get local IP address
+  delay(1500);
+
+  ShowSerialData();
+
+  gprsSerial1.println("AT+CIPSPRT=0");
+  delay(1500);
+
+  ShowSerialData();
+
+  gprsSerial1.println("AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",\"80\""); // start up the connection
+  delay(3000);
+
+  ShowSerialData();
+
+  gprsSerial1.println("AT+CIPSEND"); // begin send data to remote server
+  delay(2000);
+  ShowSerialData();
+
+  String str = "GET https://api.thingspeak.com/update?api_key=QRFU3YJC7OHF2RAP&field1=" + String(t) + "&field2=" + String(h);
+  
+  if (gps.location.isValid())
+  {
+    str += "&field5=" + String(gps.location.lat(), 6) + "&field3=" + String(gps.location.lng(), 6) + "&field4=0"; // GPS data Available NO GPS : False by 0
+  }
+  else
+  {
+    str += "&field4=1";  // when gps data is not available : 1 means true 
+  }
+
+  Serial.println(str);
+  gprsSerial1.println(str); // begin send data to remote server
+
+  delay(2000);
+  ShowSerialData();
+
+  gprsSerial1.println((char)26); // sending
+  delay(2500); // waiting for reply, important! the time is based on the condition of the internet
+  gprsSerial1.println();
+
+  ShowSerialData();
+
+  gprsSerial1.println("AT+CIPSHUT"); // close the connection
+  delay(100);
+  ShowSerialData();
+}
+
+void ShowSerialData()
+{
+  while (gprsSerial1.available() != 0)
+    Serial.write(gprsSerial1.read());
+  delay(2500);
+}
